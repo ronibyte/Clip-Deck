@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClipDeck – Twitch schauen, clippen &amp; schneiden</title>
+<style>
+  :root{
+    --bg:#0e0e10;
+    --panel:#18181b;
+    --panel-2:#1f1f23;
+    --line:#2c2c31;
+    --text:#efeff1;
+    --muted:#adadb8;
+    --purple:#9147ff;
+    --purple-dim:#772ce8;
+    --rec:#eb3b45;
+    --ok:#3ddc84;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.5;
+  }
+  header{
+    display:flex;align-items:center;gap:12px;
+    padding:14px 20px;border-bottom:1px solid var(--line);
+    background:var(--panel);
+    position:sticky;top:0;z-index:10;
+  }
+  .logo{
+    width:34px;height:34px;border-radius:9px;
+    background:var(--purple);
+    display:grid;place-items:center;
+    font-weight:800;font-size:18px;color:#fff;
+  }
+  header h1{font-size:17px;font-weight:700;letter-spacing:.3px}
+  header .sub{font-size:12px;color:var(--muted)}
+  main{
+    max-width:1280px;margin:0 auto;padding:20px;
+    display:grid;grid-template-columns:1fr 340px;gap:20px;
+    align-items:start;
+  }
+  .col{display:flex;flex-direction:column;gap:20px;min-width:0}
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+
+  .card{
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);overflow:hidden;
+  }
+  .card .head{
+    padding:12px 16px;border-bottom:1px solid var(--line);
+    font-size:12px;font-weight:700;letter-spacing:1.5px;
+    text-transform:uppercase;color:var(--muted);
+    display:flex;align-items:center;gap:8px;
+  }
+  .card .body{padding:16px}
+
+  /* Player */
+  .channel-row{display:flex;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+  .channel-row input{
+    flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);
+    border-radius:10px;padding:10px 14px;color:var(--text);font-size:15px;
+  }
+  .channel-row input:focus{outline:2px solid var(--purple);border-color:transparent}
+  .player-wrap{position:relative;background:#000;aspect-ratio:16/9}
+  .player-wrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .player-empty{
+    position:absolute;inset:0;display:grid;place-items:center;
+    color:var(--muted);font-size:14px;text-align:center;padding:20px;
+  }
+
+  /* Buttons */
+  button{
+    font:inherit;border:0;cursor:pointer;border-radius:10px;
+    padding:10px 16px;font-weight:600;font-size:14px;
+    transition:filter .15s, transform .05s;
+  }
+  button:active{transform:scale(.98)}
+  button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .btn-purple{background:var(--purple);color:#fff}
+  .btn-purple:hover:not(:disabled){background:var(--purple-dim)}
+  .btn-ghost{background:var(--panel-2);color:var(--text);border:1px solid var(--line)}
+  .btn-ghost:hover:not(:disabled){filter:brightness(1.2)}
+  .btn-clip{
+    width:100%;background:var(--purple);color:#fff;
+    font-size:16px;padding:14px;font-weight:700;
+  }
+
+  /* Buffer gauge */
+  .gauge-row{display:flex;align-items:center;gap:16px;margin-bottom:14px}
+  .gauge{position:relative;width:92px;height:92px;flex-shrink:0}
+  .gauge svg{transform:rotate(-90deg)}
+  .gauge .track{stroke:var(--panel-2);fill:none;stroke-width:8}
+  .gauge .fill{
+    stroke:var(--purple);fill:none;stroke-width:8;stroke-linecap:round;
+    transition:stroke-dashoffset .5s linear;
+  }
+  .gauge.live .fill{filter:drop-shadow(0 0 5px rgba(145,71,255,.7))}
+  .gauge .num{
+    position:absolute;inset:0;display:grid;place-items:center;
+    font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;
+  }
+  .gauge .num small{font-size:10px;font-weight:600;color:var(--muted);display:block;text-align:center}
+  .gauge-info{font-size:13px;color:var(--muted)}
+  .gauge-info b{color:var(--text)}
+
+  .status-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0}
+  .status-dot.on{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+  .status-dot.rec{background:var(--rec);box-shadow:0 0 6px var(--rec);animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.35}}
+  @media(prefers-reduced-motion:reduce){
+    .status-dot.rec{animation:none}
+    .gauge .fill{transition:none}
+  }
+
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .row button{flex:1;min-width:120px}
+  select{
+    font:inherit;background:var(--bg);color:var(--text);
+    border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:14px;
+  }
+  .field{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;font-size:13px;color:var(--muted)}
+
+  .hint{
+    margin-top:14px;padding:12px;border-radius:10px;
+    background:var(--panel-2);border:1px solid var(--line);
+    font-size:12.5px;color:var(--muted);
+  }
+  .hint b{color:var(--text)}
+
+  /* Editor */
+  .editor-video{width:100%;background:#000;display:block;max-height:420px}
+  .editor-empty{
+    padding:34px 20px;text-align:center;color:var(--muted);font-size:13.5px;
+  }
+  .trim-bar{
+    position:relative;height:34px;margin:14px 0 6px;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+    overflow:hidden;
+  }
+  .trim-range{
+    position:absolute;top:0;bottom:0;
+    background:rgba(145,71,255,.35);
+    border-left:3px solid var(--purple);border-right:3px solid var(--purple);
+  }
+  .trim-cursor{
+    position:absolute;top:0;bottom:0;width:2px;background:#fff;
+  }
+  .trim-times{
+    display:flex;justify-content:space-between;
+    font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;
+  }
+  .trim-times b{color:var(--text)}
+  .progress{
+    height:8px;border-radius:99px;background:var(--panel-2);
+    overflow:hidden;margin-top:12px;display:none;
+  }
+  .progress .bar{height:100%;width:0;background:var(--purple);transition:width .3s}
+
+  /* Clips */
+  .clip{
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    margin-bottom:12px;background:var(--panel-2);
+  }
+  .clip video{width:100%;display:block;background:#000;max-height:180px}
+  .clip .meta{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:8px 10px;font-size:12.5px;color:var(--muted);gap:8px;flex-wrap:wrap;
+  }
+  .clip .meta .acts{display:flex;gap:6px}
+  .clip a,.clip .meta button{
+    color:#fff;background:var(--purple);text-decoration:none;
+    padding:6px 12px;border-radius:8px;font-weight:600;white-space:nowrap;font-size:12.5px;
+  }
+  .clip .meta button.edit{background:var(--panel);border:1px solid var(--line)}
+  .clips-empty{font-size:13px;color:var(--muted);text-align:center;padding:10px 0}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">▶</div>
+  <div>
+    <h1>ClipDeck</h1>
+    <div class="sub">Twitch schauen · clippen · direkt schneiden</div>
+  </div>
+</header>
+
+<main>
+  <!-- LINKE SPALTE -->
+  <div class="col">
+
+    <section class="card">
+      <div class="channel-row">
+        <input id="channelInput" type="text" placeholder="Twitch-Kanalname, z. B. papaplatte" autocomplete="off">
+        <button class="btn-purple" id="loadBtn">Stream laden</button>
+      </div>
+      <div class="player-wrap" id="playerWrap">
+        <div class="player-empty" id="playerEmpty">
+          Kanalnamen eingeben und „Stream laden" drücken.<br>
+          <span style="font-size:12px">Der Player läuft über den offiziellen Twitch-Embed.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- EDITOR -->
+    <section class="card">
+      <div class="head">✂ Schnitt-Editor</div>
+      <div class="editor-empty" id="editorEmpty">
+        Noch kein Video im Editor.<br>
+        Neue Clips landen automatisch hier – oder lade unten in der Clip-Liste ein Video vom Gerät hoch (z. B. eine Handy-Bildschirmaufnahme).
+      </div>
+      <div id="editorUI" hidden>
+        <video class="editor-video" id="editVideo" controls playsinline></video>
+        <div class="body">
+          <div class="trim-bar" id="trimBar">
+            <div class="trim-range" id="trimRange"></div>
+            <div class="trim-cursor" id="trimCursor"></div>
+          </div>
+          <div class="trim-times">
+            <span>Start: <b id="inLabel">0:00.0</b></span>
+            <span>Länge: <b id="lenLabel">–</b></span>
+            <span>Ende: <b id="outLabel">–</b></span>
+          </div>
+          <div class="row">
+            <button class="btn-ghost" id="setInBtn">⟦ Start hier setzen</button>
+            <button class="btn-ghost" id="setOutBtn">Ende hier setzen ⟧</button>
+            <button class="btn-ghost" id="resetTrimBtn">Zurücksetzen</button>
+          </div>
+          <div class="row">
+            <button class="btn-clip" id="exportBtn">Zuschneiden &amp; als Datei speichern</button>
+          </div>
+          <div class="progress" id="exportProg"><div class="bar" id="exportBar"></div></div>
+          <div class="hint">
+            <b>So schneidest du:</b> Video an die gewünschte Stelle spulen → „Start hier setzen" → weiterspulen → „Ende hier setzen" → speichern. Der Export spielt den Ausschnitt einmal in Echtzeit durch und speichert ihn als neue Datei (der Ton ist dabei kurz hörbar – das ist normal).
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- RECHTE SPALTE -->
+  <div class="col">
+
+    <section class="card">
+      <div class="head"><span class="status-dot" id="capDot"></span> Aufnahme-Regie</div>
+      <div class="body">
+
+        <div id="desktopCapture">
+          <div class="gauge-row">
+            <div class="gauge" id="gauge">
+              <svg width="92" height="92" viewBox="0 0 92 92">
+                <circle class="track" cx="46" cy="46" r="40"></circle>
+                <circle class="fill" id="gaugeFill" cx="46" cy="46" r="40"
+                        stroke-dasharray="251.3" stroke-dashoffset="251.3"></circle>
+              </svg>
+              <div class="num"><span><span id="gaugeSec">0</span><small>Sek. im Puffer</small></span></div>
+            </div>
+            <div class="gauge-info" id="capStatus">
+              Kein Signal. Starte zuerst die <b>Bildschirm­aufnahme</b> und wähle diesen Tab (mit Ton) aus.
+            </div>
+          </div>
+
+          <button class="btn-purple" id="startCapBtn" style="width:100%">Bildschirmaufnahme starten</button>
+
+          <div class="field">
+            <label for="bufLen">Clip-Länge (Puffer)</label>
+            <select id="bufLen">
+              <option value="30">ca. 30–60 Sek.</option>
+              <option value="60" selected>ca. 60–120 Sek.</option>
+              <option value="90">ca. 90–180 Sek.</option>
+            </select>
+          </div>
+
+          <div class="row">
+            <button class="btn-clip" id="clipBtn" disabled>✂ Clip in den Editor holen</button>
+          </div>
+          <div class="row">
+            <button class="btn-ghost" id="recBtn" disabled>● Daueraufnahme starten</button>
+            <button class="btn-ghost" id="stopCapBtn" disabled>Signal trennen</button>
+          </div>
+
+          <div class="hint">
+            <b>PC-Modus:</b> Die Seite hält die letzten Sekunden im Puffer. Ein Klick auf den Clip-Button legt sie sofort im Schnitt-Editor ab. Beim Teilen-Dialog <b>„Tab teilen" + „Audio teilen"</b> anhaken, sonst ist der Clip stumm.
+          </div>
+        </div>
+
+        <div id="mobileCapture" hidden>
+          <div class="hint" style="margin-top:0">
+            <b>Handy-Modus:</b> Android-Browser lassen keine Aufnahme aus der Webseite heraus zu – das blockiert das System, da kommt keine Seite dran vorbei. So geht's trotzdem in 3 Schritten:<br><br>
+            1. Stream hier laden und schauen.<br>
+            2. Bei einer guten Szene die <b>Bildschirmaufnahme von Android</b> starten (Statusleiste nach unten wischen → „Bildschirmrekorder", mit Medienton).<br>
+            3. Aufnahme stoppen und unten über <b>„Video vom Gerät laden"</b> in den Editor holen → zuschneiden → fertig.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="head">Deine Clips (diese Sitzung)</div>
+      <div class="body">
+        <button class="btn-ghost" id="importBtn" style="width:100%;margin-bottom:14px">📂 Video vom Gerät laden</button>
+        <input type="file" id="importInput" accept="video/*" hidden>
+        <div id="clipsList">
+          <div class="clips-empty">Noch keine Clips gespeichert.</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- Twitch-Player ---------- */
+  const channelInput = document.getElementById("channelInput");
+  const loadBtn = document.getElementById("loadBtn");
+  const playerWrap = document.getElementById("playerWrap");
+  const playerEmpty = document.getElementById("playerEmpty");
+
+  function loadChannel(){
+    const ch = channelInput.value.trim().toLowerCase().replace(/^@/,"").replace(/\s+/g,"");
+    if(!ch) return;
+    const host = location.hostname;
+    if(!host){
+      playerEmpty.innerHTML = "⚠ Der Twitch-Player braucht eine echte Web-Adresse.<br>Diese Datei bitte über einen Webserver öffnen (z. B. GitHub Pages oder lokal <code>localhost</code>) – direkt als Datei (file://) blockiert Twitch den Player.";
+      return;
+    }
+    playerWrap.querySelectorAll("iframe").forEach(f=>f.remove());
+    playerEmpty.style.display = "none";
+    const f = document.createElement("iframe");
+    f.setAttribute("allowfullscreen","");
+    f.allow = "autoplay; fullscreen";
+    f.src = "https://player.twitch.tv/?channel=" + encodeURIComponent(ch)
+          + "&parent=" + encodeURIComponent(host) + "&muted=false";
+    playerWrap.appendChild(f);
+  }
+  loadBtn.addEventListener("click", loadChannel);
+  channelInput.addEventListener("keydown", e=>{ if(e.key==="Enter") loadChannel(); });
+
+  /* ---------- Gemeinsames ---------- */
+  const clipsList = document.getElementById("clipsList");
+  let clipCount = 0;
+
+  function pickMime(){
+    const list = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+      "video/mp4"
+    ];
+    for(const m of list){
+      if(window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+    }
+    return "";
+  }
+  const MIME = pickMime();
+  const EXT = MIME.includes("mp4") ? "mp4" : "webm";
+
+  function addClip(blob, seconds, label, openInEditor){
+    clipCount++;
+    const name = (label || "Clip") + "-" + clipCount + "-" +
+      new Date().toISOString().slice(0,19).replace(/[:T]/g,"-") + "." + EXT;
+    const url = URL.createObjectURL(blob);
+
+    const empty = clipsList.querySelector(".clips-empty");
+    if(empty) empty.remove();
+
+    const div = document.createElement("div");
+    div.className = "clip";
+    const mb = (blob.size/1024/1024).toFixed(1);
+    div.innerHTML =
+      '<video controls preload="metadata" playsinline></video>' +
+      '<div class="meta"><span>' + (seconds ? Math.round(seconds) + " Sek. · " : "") + mb + ' MB</span>' +
+      '<span class="acts"><button class="edit">Schneiden</button>' +
+      '<a download="' + name + '">Speichern</a></span></div>';
+    div.querySelector("video").src = url;
+    div.querySelector("a").href = url;
+    div.querySelector("button.edit").addEventListener("click", ()=>loadIntoEditor(url, name));
+    clipsList.prepend(div);
+
+    if(openInEditor) loadIntoEditor(url, name);
+    return {url, name};
+  }
+
+  /* ---------- Import (Handy-Workflow) ---------- */
+  const importBtn = document.getElementById("importBtn");
+  const importInput = document.getElementById("importInput");
+  importBtn.addEventListener("click", ()=>importInput.click());
+  importInput.addEventListener("change", ()=>{
+    const file = importInput.files && importInput.files[0];
+    if(!file) return;
+    const url = URL.createObjectURL(file);
+    const empty = clipsList.querySelector(".clips-empty");
+    if(empty) empty.remove();
+    loadIntoEditor(url, file.name);
+    importInput.value = "";
+  });
+
+  /* ---------- Schnitt-Editor ---------- */
+  const editorEmpty = document.getElementById("editorEmpty");
+  const editorUI = document.getElementById("editorUI");
+  const editVideo = document.getElementById("editVideo");
+  const trimRange = document.getElementById("trimRange");
+  const trimCursor = document.getElementById("trimCursor");
+  const trimBar = document.getElementById("trimBar");
+  const inLabel = document.getElementById("inLabel");
+  const outLabel = document.getElementById("outLabel");
+  const lenLabel = document.getElementById("lenLabel");
+  const setInBtn = document.getElementById("setInBtn");
+  const setOutBtn = document.getElementById("setOutBtn");
+  const resetTrimBtn = document.getElementById("resetTrimBtn");
+  const exportBtn = document.getElementById("exportBtn");
+  const exportProg = document.getElementById("exportProg");
+  const exportBar = document.getElementById("exportBar");
+
+  let inPoint = 0, outPoint = 0, editDur = 0, editName = "Clip";
+
+  function fmt(t){
+    if(!isFinite(t)) return "–";
+    const m = Math.floor(t/60), s = (t%60).toFixed(1);
+    return m + ":" + (s<10?"0":"") + s;
+  }
+
+  function updateTrimUI(){
+    if(editDur<=0) return;
+    trimRange.style.left  = (inPoint/editDur*100) + "%";
+    trimRange.style.width = ((outPoint-inPoint)/editDur*100) + "%";
+    inLabel.textContent  = fmt(inPoint);
+    outLabel.textContent = fmt(outPoint);
+    lenLabel.textContent = fmt(outPoint - inPoint);
+  }
+
+  function loadIntoEditor(url, name){
+    editName = (name || "Clip").replace(/\.[^.]+$/,"");
+    editorEmpty.hidden = true;
+    editorUI.hidden = false;
+    editVideo.src = url;
+    editVideo.addEventListener("loadedmetadata", function once(){
+      editVideo.removeEventListener("loadedmetadata", once);
+      editDur = isFinite(editVideo.duration) ? editVideo.duration : 0;
+      inPoint = 0;
+      outPoint = editDur;
+      updateTrimUI();
+    });
+    editorUI.scrollIntoView({behavior:"smooth", block:"center"});
+  }
+
+  editVideo.addEventListener("timeupdate", ()=>{
+    if(editDur>0) trimCursor.style.left = (editVideo.currentTime/editDur*100) + "%";
+  });
+  trimBar.addEventListener("click", (e)=>{
+    if(editDur<=0) return;
+    const r = trimBar.getBoundingClientRect();
+    editVideo.currentTime = Math.max(0, Math.min(1,(e.clientX-r.left)/r.width)) * editDur;
+  });
+  setInBtn.addEventListener("click", ()=>{
+    inPoint = editVideo.currentTime;
+    if(outPoint <= inPoint) outPoint = editDur;
+    updateTrimUI();
+  });
+  setOutBtn.addEventListener("click", ()=>{
+    outPoint = editVideo.currentTime;
+    if(outPoint <= inPoint) inPoint = 0;
+    updateTrimUI();
+  });
+  resetTrimBtn.addEventListener("click", ()=>{
+    inPoint = 0; outPoint = editDur; updateTrimUI();
+  });
+
+  exportBtn.addEventListener("click", async ()=>{
+    if(!(editVideo.captureStream || editVideo.mozCaptureStream)){
+      alert("Dein Browser unterstützt den Export leider nicht. Am besten Chrome (Android/PC) oder Edge nutzen.");
+      return;
+    }
+    const dur = outPoint - inPoint;
+    if(dur <= 0.2){ alert("Bitte erst Start- und Endpunkt setzen."); return; }
+
+    exportBtn.disabled = true;
+    exportProg.style.display = "block";
+    exportBar.style.width = "0%";
+
+    // Verstecktes Video zum sauberen Abspielen des Ausschnitts
+    const v = document.createElement("video");
+    v.src = editVideo.src;
+    v.playsInline = true;
+    v.style.position = "fixed"; v.style.width = "1px"; v.style.height = "1px";
+    v.style.opacity = "0"; v.style.pointerEvents = "none";
+    document.body.appendChild(v);
+    editVideo.pause();
+
+    await new Promise(res=>{
+      v.addEventListener("loadedmetadata", res, {once:true});
+      v.load();
+    });
+    v.currentTime = inPoint;
+    await new Promise(res=>v.addEventListener("seeked", res, {once:true}));
+
+    const stream = (v.captureStream ? v.captureStream() : v.mozCaptureStream());
+    const rec = new MediaRecorder(stream, {
+      mimeType: MIME || undefined,
+      videoBitsPerSecond: 6_000_000,
+      audioBitsPerSecond: 160_000
+    });
+    const chunks = [];
+    rec.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+
+    const finish = ()=>{
+      if(rec.state !== "inactive") rec.stop();
+    };
+    rec.onstop = ()=>{
+      v.pause(); v.remove();
+      exportProg.style.display = "none";
+      exportBtn.disabled = false;
+      if(chunks.length){
+        const blob = new Blob(chunks, {type: MIME || "video/webm"});
+        const c = addClip(blob, dur, editName + "-geschnitten", false);
+        // Direkt automatisch herunterladen
+        const a = document.createElement("a");
+        a.href = c.url; a.download = c.name;
+        document.body.appendChild(a); a.click(); a.remove();
+      }
+    };
+
+    const tick = ()=>{
+      const done = Math.min((v.currentTime - inPoint) / dur, 1);
+      exportBar.style.width = (done*100).toFixed(1) + "%";
+      if(v.currentTime >= outPoint || v.ended){ finish(); return; }
+      requestAnimationFrame(tick);
+    };
+
+    try{
+      await v.play();
+    }catch(e){
+      v.remove();
+      exportProg.style.display = "none";
+      exportBtn.disabled = false;
+      alert("Export konnte nicht starten. Bitte einmal ins Video tippen und erneut versuchen.");
+      return;
+    }
+    rec.start(1000);
+    tick();
+  });
+
+  /* ---------- PC: Bildschirmaufnahme + Replay-Puffer ---------- */
+  const desktopCapture = document.getElementById("desktopCapture");
+  const mobileCapture = document.getElementById("mobileCapture");
+  const startCapBtn = document.getElementById("startCapBtn");
+  const stopCapBtn  = document.getElementById("stopCapBtn");
+  const clipBtn     = document.getElementById("clipBtn");
+  const recBtn      = document.getElementById("recBtn");
+  const bufLenSel   = document.getElementById("bufLen");
+  const capStatus   = document.getElementById("capStatus");
+  const capDot      = document.getElementById("capDot");
+  const gauge       = document.getElementById("gauge");
+  const gaugeFill   = document.getElementById("gaugeFill");
+  const gaugeSec    = document.getElementById("gaugeSec");
+
+  const CIRC = 251.3;
+  let stream = null;
+  let older = null, newer = null;
+  let rotateTimer = null, uiTimer = null;
+  let manualRec = null, manualChunks = [];
+
+  const hasCapture = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+  if(!hasCapture){
+    desktopCapture.hidden = true;
+    mobileCapture.hidden = false;
+  }
+
+  function makeSegment(){
+    const rec = new MediaRecorder(stream, {
+      mimeType: MIME || undefined,
+      videoBitsPerSecond: 6_000_000,
+      audioBitsPerSecond: 160_000
+    });
+    const seg = { rec, chunks: [], start: Date.now(), saveOnStop: false };
+    rec.ondataavailable = e => { if(e.data && e.data.size) seg.chunks.push(e.data); };
+    rec.onstop = () => {
+      if(seg.saveOnStop && seg.chunks.length){
+        const blob = new Blob(seg.chunks, {type: MIME || "video/webm"});
+        addClip(blob, (Date.now() - seg.start)/1000, "Clip", true);
+      }
+      seg.chunks = [];
+    };
+    rec.start(1000);
+    return seg;
+  }
+
+  function bufSeconds(){ return parseInt(bufLenSel.value, 10); }
+
+  function startRotation(){
+    stopRotation();
+    older = makeSegment();
+    newer = makeSegment();
+    rotateTimer = setInterval(rotate, bufSeconds() * 1000);
+  }
+  function rotate(){
+    try { older.saveOnStop = false; older.rec.stop(); } catch(e){}
+    older = newer;
+    newer = makeSegment();
+  }
+  function stopRotation(){
+    if(rotateTimer){ clearInterval(rotateTimer); rotateTimer = null; }
+    [older, newer].forEach(s => { if(s){ try{ s.saveOnStop=false; s.rec.stop(); }catch(e){} } });
+    older = newer = null;
+  }
+
+  async function startCapture(){
+    try{
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 30 },
+        audio: true,
+        preferCurrentTab: true,
+        selfBrowserSurface: "include",
+        systemAudio: "include"
+      });
+    }catch(e){
+      capStatus.innerHTML = "Aufnahme abgebrochen oder nicht erlaubt.";
+      return;
+    }
+    if(!stream.getAudioTracks().length){
+      capStatus.innerHTML = "⚠ <b>Kein Ton!</b> Signal ohne Audio – am besten trennen und beim Teilen-Dialog 'Audio teilen' anhaken.";
+    } else {
+      capStatus.innerHTML = "Signal steht. Der Puffer läuft – der Clip-Button holt die letzten Sekunden direkt in den Editor.";
+    }
+    stream.getVideoTracks()[0].addEventListener("ended", stopCapture);
+
+    startRotation();
+    uiTimer = setInterval(updateGauge, 500);
+
+    capDot.classList.add("on");
+    gauge.classList.add("live");
+    startCapBtn.disabled = true;
+    stopCapBtn.disabled = false;
+    clipBtn.disabled = false;
+    recBtn.disabled = false;
+  }
+
+  function stopCapture(){
+    stopRotation();
+    stopManual(false);
+    if(uiTimer){ clearInterval(uiTimer); uiTimer = null; }
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+    capDot.classList.remove("on","rec");
+    gauge.classList.remove("live");
+    gaugeFill.style.strokeDashoffset = CIRC;
+    gaugeSec.textContent = "0";
+    capStatus.innerHTML = "Signal getrennt. Für neue Clips die Bildschirmaufnahme wieder starten.";
+    startCapBtn.disabled = false;
+    stopCapBtn.disabled = true;
+    clipBtn.disabled = true;
+    recBtn.disabled = true;
+    recBtn.textContent = "● Daueraufnahme starten";
+  }
+
+  function updateGauge(){
+    if(!older) return;
+    const sec = Math.min(Math.floor((Date.now() - older.start)/1000), bufSeconds()*2);
+    gaugeSec.textContent = sec;
+    const frac = Math.min(sec / (bufSeconds()*2), 1);
+    gaugeFill.style.strokeDashoffset = CIRC * (1 - frac);
+  }
+
+  function makeClip(){
+    if(!older) return;
+    if(rotateTimer){ clearInterval(rotateTimer); rotateTimer = null; }
+    older.saveOnStop = true;
+    try{ older.rec.stop(); }catch(e){}
+    try{ newer.saveOnStop = false; newer.rec.stop(); }catch(e){}
+    older = makeSegment();
+    newer = makeSegment();
+    rotateTimer = setInterval(rotate, bufSeconds() * 1000);
+  }
+
+  function startManual(){
+    manualChunks = [];
+    manualRec = new MediaRecorder(stream, {
+      mimeType: MIME || undefined,
+      videoBitsPerSecond: 6_000_000,
+      audioBitsPerSecond: 160_000
+    });
+    manualRec.ondataavailable = e => { if(e.data && e.data.size) manualChunks.push(e.data); };
+    manualRec._start = Date.now();
+    manualRec.onstop = () => {
+      if(manualRec && manualRec._save && manualChunks.length){
+        const blob = new Blob(manualChunks, {type: MIME || "video/webm"});
+        addClip(blob, (Date.now() - manualRec._start)/1000, "Aufnahme", true);
+      }
+      manualChunks = [];
+    };
+    manualRec.start(1000);
+    recBtn.textContent = "■ Daueraufnahme stoppen";
+    capDot.classList.add("rec");
+  }
+
+  function stopManual(save){
+    if(manualRec && manualRec.state !== "inactive"){
+      manualRec._save = save;
+      const r = manualRec;
+      r.stop();
+    } else {
+      manualRec = null;
+    }
+    recBtn.textContent = "● Daueraufnahme starten";
+    capDot.classList.remove("rec");
+    if(stream) capDot.classList.add("on");
+  }
+
+  startCapBtn.addEventListener("click", startCapture);
+  stopCapBtn.addEventListener("click", stopCapture);
+  clipBtn.addEventListener("click", makeClip);
+  recBtn.addEventListener("click", () => {
+    if(manualRec && manualRec.state !== "inactive"){
+      manualRec._save = true;
+      manualRec.stop();
+      manualRec = null;
+      recBtn.textContent = "● Daueraufnahme starten";
+      capDot.classList.remove("rec");
+      if(stream) capDot.classList.add("on");
+    } else {
+      startManual();
+    }
+  });
+  bufLenSel.addEventListener("change", () => { if(stream) startRotation(); });
+})();
+</script>
+</body>
+</html>
